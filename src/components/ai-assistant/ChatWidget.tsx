@@ -34,10 +34,41 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose }) => {
     scrollToBottom();
   }, [messages]);
 
+  // Input validation and sanitization
+  const validateAndSanitizeInput = (input: string): string | null => {
+    // Length validation
+    if (!input.trim() || input.length > 1000) {
+      return null;
+    }
+    
+    // Basic sanitization - remove dangerous characters
+    return input.trim().replace(/[<>]/g, '');
+  };
+
+  // Sanitize API response content
+  const sanitizeResponse = (response: string): string => {
+    // Remove HTML tags and sanitize content
+    return response.replace(/<[^>]*>/g, '').trim();
+  };
+
   const handleSendMessage = async (content: string) => {
+    // Validate and sanitize input
+    const sanitizedContent = validateAndSanitizeInput(content);
+    if (!sanitizedContent) {
+      // Show error for invalid input
+      const errorMessage: Message = {
+        id: crypto.randomUUID(),
+        content: 'Please enter a valid message (maximum 1000 characters).',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      return;
+    }
+
     const userMessage: Message = {
-      id: Date.now().toString(),
-      content,
+      id: crypto.randomUUID(),
+      content: sanitizedContent,
       isUser: true,
       timestamp: new Date(),
     };
@@ -46,38 +77,43 @@ export const ChatWidget: React.FC<ChatWidgetProps> = ({ onClose }) => {
     setIsLoading(true);
 
     try {
-      // Call the backend API
+      // Call the backend API with sanitized input
       const response = await fetch('/api/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message: content,
+          message: sanitizedContent,
           timestamp: new Date().toISOString(),
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error('Network error');
       }
 
       const data = await response.json();
       
+      // Sanitize the API response
+      const responseContent = sanitizeResponse(
+        data.response || data.message || 'I received your message, but I\'m not sure how to respond right now.'
+      );
+      
       const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: data.response || data.message || 'I received your message, but I\'m not sure how to respond right now.',
+        id: crypto.randomUUID(),
+        content: responseContent,
         isUser: false,
         timestamp: new Date(),
       };
 
       setMessages(prev => [...prev, aiMessage]);
     } catch (error) {
-      console.error('Error calling AI backend:', error);
+      console.error('API Error:', error);
       
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: 'Sorry, I\'m having trouble connecting right now. Please try again later.',
+        id: crypto.randomUUID(),
+        content: 'Sorry, I\'m temporarily unavailable. Please try again later.',
         isUser: false,
         timestamp: new Date(),
       };
